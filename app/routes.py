@@ -36,11 +36,11 @@ def login():
         return redirect(url_for('index'))
     form = LoginForm()
     if form.validate_on_submit():
-        user = User.query.filter_by(username=form.username.data).first()
-        if user is None or not user.check_password(form.password.data):
+        form_user = User.query.filter_by(username=form.username.data).first()
+        if form_user is None or not form_user.check_password(form.password.data):
             flash('Invalid username or password')
             redirect(url_for('login'))
-        login_user(user, remember=form.remember_me.data)
+        login_user(form_user, remember=form.remember_me.data)
         next_page = request.args.get('next')
         if not next_page or url_parse(next_page).netloc != '':
             next_page = url_for('index')
@@ -60,9 +60,9 @@ def register():
         return redirect(url_for('index'))
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = User(username=form.username.data, email=form.email.data)
-        user.set_password(form.password.data)
-        db.session.add(user)
+        form_user = User(username=form.username.data, email=form.email.data)
+        form_user.set_password(form.password.data)
+        db.session.add(form_user)
         db.session.commit()
         flash('Congratulations, you are now a registered user!')
         return redirect(url_for('login'))
@@ -72,12 +72,12 @@ def register():
 @app.route('/user/<username>')
 @login_required
 def user(username):
-    user = User.query.filter_by(username=username).first_or_404()
+    selected_user = User.query.filter_by(username=username).first_or_404()
     posts = [
-        {'author': user, 'body': 'Test post #1'},
-        {'author': user, 'body': 'Test post #2'}
+        {'author': selected_user, 'body': 'Test post #1'},
+        {'author': selected_user, 'body': 'Test post #2'}
     ]
-    return render_template('user.html', user=user, posts=posts)
+    return render_template('user.html', user=selected_user, posts=posts)
 
 
 @app.before_request
@@ -90,7 +90,7 @@ def before_request():
 @app.route('/edit_profile', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
-    form = EditProfileForm()
+    form = EditProfileForm(current_user.username)
     if form.validate_on_submit():
         current_user.username = form.username.data
         current_user.about_me = form.about_me.data
@@ -102,3 +102,35 @@ def edit_profile():
         form.about_me.data = current_user.about_me
     return render_template('edit_profile.html', title='Edit Profile',
                            form=form)
+
+
+@app.route('/follow/<username>')
+@login_required
+def follow(username):
+    followed_user = User.query.filter_by(username=username).first()
+    if followed_user is None:
+        flash('User {} not found.'.format(username))
+        return redirect(url_for('index'))
+    if followed_user == current_user:
+        flash('You cannot follow yourself!')
+        return redirect(url_for('user', username=username))
+    current_user.follow(followed_user)
+    db.session.commit()
+    flash('You are following {}!'.format(username))
+    return redirect(url_for('user', username=username))
+
+
+@app.route('/unfollow/<username>')
+@login_required
+def unfollow(username):
+    unfollowed_user = User.query.filter_by(username=username).first()
+    if unfollowed_user is None:
+        flash('User {} not found.'.format(username))
+        return redirect(url_for('index'))
+    if unfollowed_user == current_user:
+        flash('You cannot unfollow yourself!')
+        return redirect(url_for('user', username=username))
+    current_user.unfollow(unfollowed_user)
+    db.session.commit()
+    flash('You are not following {}.'.format(username))
+    return redirect(url_for('user', username=username))
